@@ -13,10 +13,11 @@ class Mesh:
         self.hy = height / ny
         self.nodes = {}
         self.elements = []
-        self.boundaries = {"left": [],"right": [],"top": [],"bottom": []}
+        self.corners = {"left": [],"right": [],"top": [],"bottom": []}
+        self.edges = {"left": [],"right": [],"top": [],"bottom": []}
 
-        node_map = self.create_nodes()
-        self.create_elements(node_map)
+        self.node_map = self.create_nodes()
+        self.create_elements(self.node_map)
 
     def create_nodes(self):
         node_map = {}
@@ -55,15 +56,26 @@ class Mesh:
         raise ValueError(f"No material")
 
     def get_boundary_nodes(self, tol=1e-9):
+        boundaries = self.corners.copy()
 
         for node_id, node in self.nodes.items():
             if abs(node.x) < tol:
-                self.boundaries["left"].append(node_id)
+                boundaries["left"].append(node_id)
             if abs(node.x - self.width) < tol:
-                self.boundaries["right"].append(node_id)
+                boundaries["right"].append(node_id)
             if abs(node.y) < tol:
-                self.boundaries["bottom"].append(node_id)
+                boundaries["bottom"].append(node_id)
             if abs(node.y - self.height) < tol:
-                self.boundaries["top"].append(node_id)
+                boundaries["top"].append(node_id)
 
-        return self.boundaries
+        return boundaries
+
+    def get_boundary_edges(self):
+        for i in range(self.nx):
+            self.edges["bottom"].append((self.node_map[(i, 0)], self.node_map[(i + 1, 0)]))
+            self.edges["top"].append((self.node_map[(i, self.ny)], self.node_map[(i + 1, self.ny)]))
+        for j in range(self.ny):
+            self.edges["left"].append((self.node_map[(0, j)], self.node_map[(0, j + 1)]))
+            self.edges["right"].append((self.node_map[(self.nx, j)], self.node_map[(self.nx, j + 1)]))
+
+        return self.edges
