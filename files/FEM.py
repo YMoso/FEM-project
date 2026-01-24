@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.sparse import lil_matrix
+from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import spsolve
 from CONFIG.config import config
 from files.Material import Material
@@ -20,21 +20,37 @@ class FEM:
     def __init__(self, mesh):
         self.mesh = mesh
         self.n_nodes = len(mesh.nodes)
-
-        self.K = lil_matrix((self.n_nodes, self.n_nodes))
+        self.rows = []
+        self.cols = []
+        self.data = []
         self.F = np.zeros(self.n_nodes)
+        self.K = None
         self.solution = None
         self.phi = None
         self.build_system()
 
     def build_system(self):
         self.assemble_stiffness_matrix()
-        self.K = self.K.tocsr()
+        self.rows = np.array(self.rows)
+        self.cols = np.array(self.cols)
+        self.data = np.array(self.data)
+
+        mask = self.rows != self.cols
+        full_rows = np.concatenate([self.rows, self.cols[mask]])
+        full_cols = np.concatenate([self.cols, self.rows[mask]])
+        full_data = np.concatenate([self.data, self.data[mask]])
+
+        # Create CSR matrix from mirrored coordinates
+        self.K = coo_matrix((full_data, (full_rows, full_cols)),
+                            shape=(self.n_nodes, self.n_nodes)).tocsr()
+
+        self.rows, self.cols, self.data = None, None, None
+
         self.boundaries()
         self.plots()
+        self.plot_solution_along_line(config["line_values"]["x0"], config["line_values"]["y0"], config["line_values"]["x1"], config["line_values"]["y1"])
         self.mesh.plot_mesh_with_materials()
         self.save_nodal_results()
-        self.plot_solution_along_line(x0=0.0, y0=0.5,x1=1.0, y1=0.5)
         plt.show()
 
     def assemble_stiffness_matrix(self):
@@ -47,7 +63,10 @@ class FEM:
             A = element.node_indices[a]
             for b in range(3):
                 B = element.node_indices[b]
-                self.K[A, B] += Ke[a, b]
+                if A <= B:
+                    self.rows.append(A)
+                    self.cols.append(B)
+                    self.data.append(Ke[a, b])
 
     def compute_element_stiffness(self, element):
         n0, n1, n2 = element.node_indices
@@ -123,6 +142,10 @@ class FEM:
         plt.ylabel("y")
         plt.title("2D FEM Electric Potential")
         plt.gca().set_aspect("equal")
+        if config["line_values"]["line_visible"]:
+            x0, y0, x1, y1 =  config["line_values"]["x0"], config["line_values"]["y0"], config["line_values"]["x1"], config["line_values"]["y1"]
+            plt.plot([x0, x1], [y0, y1], "r--", lw=2, label="sampling line")
+            plt.legend()
 
 
     def save_nodal_results(self, filename="solution_nodes.txt"):
