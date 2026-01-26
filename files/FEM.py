@@ -1,40 +1,49 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.sparse import lil_matrix
+from scipy.sparse import coo_matrix
 from scipy.sparse.linalg import spsolve
-from CONFIG.config import config
 from files.Material import Material
 from files.Mesh import Mesh
 
 
-def initialize_fem():
+def initialize_fem(config):
     materials = []
     for m in config["materials"]:
         materials.append(Material(m["name"], m["permittivity"], m["x_range"], m["y_range"]))
-
     mesh = Mesh(config["width"], config["height"], config["nx"], config["ny"], materials)
-    solver = FEM(mesh)
+    solver = FEM(mesh, config)
 
 
 class FEM:
-    def __init__(self, mesh):
+    def __init__(self, mesh, config):
         self.mesh = mesh
+        self.config = config
         self.n_nodes = len(mesh.nodes)
-
-        self.K = lil_matrix((self.n_nodes, self.n_nodes))
+        self.rows = []
+        self.cols = []
+        self.data = []
         self.F = np.zeros(self.n_nodes)
+        self.K = None
         self.solution = None
         self.phi = None
         self.build_system()
 
     def build_system(self):
         self.assemble_stiffness_matrix()
-        self.K = self.K.tocsr()
+        self.rows = np.array(self.rows)
+        self.cols = np.array(self.cols)
+        self.data = np.array(self.data)
+        mask = self.rows != self.cols
+        full_rows = np.concatenate([self.rows, self.cols[mask]])
+        full_cols = np.concatenate([self.cols, self.rows[mask]])
+        full_data = np.concatenate([self.data, self.data[mask]])
+        self.K = coo_matrix((full_data, (full_rows, full_cols)),shape=(self.n_nodes, self.n_nodes)).tocsr()
+        self.rows, self.cols, self.data = None, None, None
         self.boundaries()
         self.plots()
+        self.plot_solution_along_line(self.config["line_values"]["x0"], self.config["line_values"]["y0"], self.config["line_values"]["x1"], self.config["line_values"]["y1"])
         self.mesh.plot_mesh_with_materials()
         self.save_nodal_results()
-        self.plot_solution_along_line(x0=0.0, y0=0.5,x1=1.0, y1=0.5)
         plt.show()
 
     def assemble_stiffness_matrix(self):
@@ -47,7 +56,10 @@ class FEM:
             A = element.node_indices[a]
             for b in range(3):
                 B = element.node_indices[b]
-                self.K[A, B] += Ke[a, b]
+                if A <= B:
+                    self.rows.append(A)
+                    self.cols.append(B)
+                    self.data.append(Ke[a, b])
 
     def compute_element_stiffness(self, element):
         n0, n1, n2 = element.node_indices
@@ -103,11 +115,11 @@ class FEM:
 
     def boundaries(self):
         node_boundaries = self.mesh.get_boundary_nodes()
-        for side, value in config["boundary_conditions_dirichlet"].items():
+        for side, value in self.config["boundary_conditions_dirichlet"].items():
             node_ids = node_boundaries[side]
             self.apply_dirichlet_bc(node_ids, [value] * len(node_ids))
 
-        for side, q in config["boundary_conditions_neumann"].items():
+        for side, q in self.config["boundary_conditions_neumann"].items():
             self.apply_neumann_bc(node_boundaries[side],q)
 
 
@@ -123,6 +135,10 @@ class FEM:
         plt.ylabel("y")
         plt.title("2D FEM Electric Potential")
         plt.gca().set_aspect("equal")
+        if self.config["line_values"]["line_visible"]:
+            x0, y0, x1, y1 =  self.config["line_values"]["x0"], self.config["line_values"]["y0"], self.config["line_values"]["x1"], self.config["line_values"]["y1"]
+            plt.plot([x0, x1], [y0, y1], "r--", lw=2, label="sampling line")
+            plt.legend()
 
 
     def save_nodal_results(self, filename="solution_nodes.txt"):
@@ -157,15 +173,12 @@ class FEM:
     def interpolate_at_point(self, x, y):
         for element in self.mesh.elements:
             n0, n1, n2 = element.node_indices
-
             x1, y1 = self.mesh.nodes[n0].x, self.mesh.nodes[n0].y
             x2, y2 = self.mesh.nodes[n1].x, self.mesh.nodes[n1].y
             x3, y3 = self.mesh.nodes[n2].x, self.mesh.nodes[n2].y
-
             det = (y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3)
             if abs(det) < 1e-14:
                 continue
-
             l1 = ((y2-y3)*(x-x3) + (x3 - x2) * (y -y3))/det
             l2 = ((y3 -y1) *(x -x3) +(x1-x3) *(y-y3)) / det
             l3 = 1.0 -l1 -l2
