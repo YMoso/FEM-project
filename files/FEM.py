@@ -76,7 +76,6 @@ class FEM:
         b1, c1 = (y2 - y3), (x3 - x2)
         b2, c2 = (y3 - y1), (x1 - x3)
         b3, c3 = (y1 - y2), (x2 - x1)
-
         b = np.array([b1, b2, b3], dtype=float)
         c = np.array([c1, c2, c3], dtype=float)
 
@@ -146,7 +145,7 @@ class FEM:
         y = np.array([node.y for node in self.mesh.nodes.values()])
         data = np.column_stack((x, y, self.solution))
         head = "x [m]\t y [m]\t phi [V]"
-        np.savetxt(filename, data, header=head, comments="")
+        np.savetxt(filename, data, header=head, comments="", fmt="%.6f")
 
     def plot_solution_along_line(self, x0, y0, x1, y1):
         n_points = 100

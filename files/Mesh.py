@@ -87,13 +87,11 @@ class Mesh:
         element_id = 0
         for j in range(ny -1):
             for i in range(nx -1):
-                # its my square
                 n0 = j * nx + i
                 n1 = j * nx + (i+1)
                 n2 = (j+1) * nx + (i +1)
                 n3 = (j+1) * nx + i
 
-                # its my two triangles in this square
                 triangles = [(n0, n1, n3),(n1, n2, n3)]
 
                 for nodes in triangles:
